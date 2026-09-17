@@ -1,0 +1,149 @@
+{
+  "nodes": [
+    "src/indexer.ts",
+    "src/analyzer/detector.ts",
+    "src/analyzer/index.ts",
+    "src/analyzer/parser.ts",
+    "src/analyzer/resolver.ts",
+    "src/analyzer/scanner.ts",
+    "src/analyzer/slicer.ts",
+    "src/semantic/embedder.ts",
+    "src/semantic/index.ts",
+    "src/semantic/manifest.ts",
+    "src/semantic/store.ts"
+  ],
+  "internalEdges": [
+    {
+      "from": "src/indexer.ts",
+      "to": "src/analyzer/index.ts",
+      "importedSymbols": [
+        "RepoScanner",
+        "ModuleResolver",
+        "GraphSlicer",
+        "EntryPointDetector"
+      ]
+    },
+    {
+      "from": "src/indexer.ts",
+      "to": "src/semantic/index.ts",
+      "importedSymbols": [
+        "ManifestGenerator",
+        "FeatureCatalog"
+      ]
+    },
+    {
+      "from": "src/analyzer/detector.ts",
+      "to": "src/analyzer/resolver.ts",
+      "importedSymbols": [
+        "DependencyGraph"
+      ]
+    },
+    {
+      "from": "src/analyzer/resolver.ts",
+      "to": "src/analyzer/scanner.ts",
+      "importedSymbols": [
+        "RepoMetadata"
+      ]
+    },
+    {
+      "from": "src/analyzer/scanner.ts",
+      "to": "src/analyzer/parser.ts",
+      "importedSymbols": [
+        "CodeParser",
+        "FileSymbols"
+      ]
+    },
+    {
+      "from": "src/analyzer/slicer.ts",
+      "to": "src/analyzer/resolver.ts",
+      "importedSymbols": [
+        "DependencyGraph",
+        "ResolvedEdge"
+      ]
+    },
+    {
+      "from": "src/semantic/manifest.ts",
+      "to": "src/analyzer/index.ts",
+      "importedSymbols": [
+        "FeatureSlice"
+      ]
+    },
+    {
+      "from": "src/semantic/store.ts",
+      "to": "src/semantic/manifest.ts",
+      "importedSymbols": [
+        "FeatureManifest"
+      ]
+    },
+    {
+      "from": "src/semantic/store.ts",
+      "to": "src/semantic/embedder.ts",
+      "importedSymbols": [
+        "VectorEmbedder"
+      ]
+    }
+  ],
+  "externalDependencies": [
+    {
+      "from": "src/indexer.ts",
+      "pkgName": "path"
+    },
+    {
+      "from": "src/analyzer/detector.ts",
+      "pkgName": "path"
+    },
+    {
+      "from": "src/analyzer/parser.ts",
+      "pkgName": "tree-sitter"
+    },
+    {
+      "from": "src/analyzer/parser.ts",
+      "pkgName": "tree-sitter-typescript"
+    },
+    {
+      "from": "src/analyzer/resolver.ts",
+      "pkgName": "fs"
+    },
+    {
+      "from": "src/analyzer/resolver.ts",
+      "pkgName": "path"
+    },
+    {
+      "from": "src/analyzer/scanner.ts",
+      "pkgName": "fs"
+    },
+    {
+      "from": "src/analyzer/scanner.ts",
+      "pkgName": "path"
+    },
+    {
+      "from": "src/analyzer/scanner.ts",
+      "pkgName": "fast-glob"
+    },
+    {
+      "from": "src/analyzer/slicer.ts",
+      "pkgName": "fs"
+    },
+    {
+      "from": "src/semantic/embedder.ts",
+      "pkgName": "dotenv"
+    },
+    {
+      "from": "src/semantic/manifest.ts",
+      "pkgName": "fs"
+    },
+    {
+      "from": "src/semantic/manifest.ts",
+      "pkgName": "dotenv"
+    },
+    {
+      "from": "src/semantic/manifest.ts",
+      "pkgName": "zod"
+    },
+    {
+      "from": "src/semantic/store.ts",
+      "pkgName": "fs"
+    }
+  ],
+  "unresolvedImports": []
+}

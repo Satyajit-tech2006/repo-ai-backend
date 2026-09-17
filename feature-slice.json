@@ -1,0 +1,15 @@
+{
+  "entryPoint": "src/scanner.ts",
+  "internalFiles": [
+    "src/scanner.ts",
+    "src/parser.ts"
+  ],
+  "externalDependencies": [
+    "fs",
+    "path",
+    "fast-glob",
+    "tree-sitter",
+    "tree-sitter-typescript"
+  ],
+  "fileCount": 2
+}

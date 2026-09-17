@@ -1,0 +1,24 @@
+{
+  "featureName": "TypeScript Codebase Scanner",
+  "category": "code_analysis",
+  "summary": "Scans and parses TypeScript source files within a codebase using pattern-based file discovery and syntax tree generation. It leverages fast-glob for file retrieval and Tree-sitter to construct Abstract Syntax Trees (ASTs) for static code analysis.",
+  "capabilities": [
+    "Fast pattern-based file matching across source directories using fast-glob",
+    "AST generation for TypeScript files via Tree-sitter",
+    "File system access and path resolution for source code inspection"
+  ],
+  "entryPoints": [
+    "src/scanner.ts"
+  ],
+  "files": [
+    "src/scanner.ts",
+    "src/parser.ts"
+  ],
+  "externalDependencies": [
+    "fs",
+    "path",
+    "fast-glob",
+    "tree-sitter",
+    "tree-sitter-typescript"
+  ]
+}

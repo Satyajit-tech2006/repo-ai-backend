@@ -1,0 +1,426 @@
+{
+  "rootPath": "C:/Users/56ssw/OneDrive/Desktop/Repo AI/repo-ai-backend",
+  "totalFiles": 11,
+  "files": {
+    "src/indexer.ts": {
+      "imports": [
+        {
+          "source": "path",
+          "specifiers": [
+            {
+              "name": "path",
+              "isDefault": true,
+              "isNamespace": false
+            }
+          ]
+        },
+        {
+          "source": "./analyzer",
+          "specifiers": [
+            {
+              "name": "RepoScanner",
+              "isDefault": false,
+              "isNamespace": false
+            },
+            {
+              "name": "ModuleResolver",
+              "isDefault": false,
+              "isNamespace": false
+            },
+            {
+              "name": "GraphSlicer",
+              "isDefault": false,
+              "isNamespace": false
+            },
+            {
+              "name": "EntryPointDetector",
+              "isDefault": false,
+              "isNamespace": false
+            }
+          ]
+        },
+        {
+          "source": "./semantic",
+          "specifiers": [
+            {
+              "name": "ManifestGenerator",
+              "isDefault": false,
+              "isNamespace": false
+            },
+            {
+              "name": "FeatureCatalog",
+              "isDefault": false,
+              "isNamespace": false
+            }
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "RepositoryIndexer",
+          "type": "class"
+        }
+      ]
+    },
+    "src/analyzer/detector.ts": {
+      "imports": [
+        {
+          "source": "path",
+          "specifiers": [
+            {
+              "name": "path",
+              "isDefault": true,
+              "isNamespace": false
+            }
+          ]
+        },
+        {
+          "source": "./resolver",
+          "specifiers": [
+            {
+              "name": "DependencyGraph",
+              "isDefault": false,
+              "isNamespace": false
+            }
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "EntryCandidate",
+          "type": "interface"
+        },
+        {
+          "name": "EntryPointDetector",
+          "type": "class"
+        }
+      ]
+    },
+    "src/analyzer/index.ts": {
+      "imports": [],
+      "exports": []
+    },
+    "src/analyzer/parser.ts": {
+      "imports": [
+        {
+          "source": "tree-sitter",
+          "specifiers": [
+            {
+              "name": "Parser",
+              "isDefault": true,
+              "isNamespace": false
+            }
+          ]
+        },
+        {
+          "source": "tree-sitter-typescript",
+          "specifiers": [
+            {
+              "name": "TypeScript",
+              "isDefault": true,
+              "isNamespace": false
+            }
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ImportSpecifier",
+          "type": "interface"
+        },
+        {
+          "name": "FileImport",
+          "type": "interface"
+        },
+        {
+          "name": "FileExport",
+          "type": "interface"
+        },
+        {
+          "name": "FileSymbols",
+          "type": "interface"
+        },
+        {
+          "name": "CodeParser",
+          "type": "class"
+        }
+      ]
+    },
+    "src/analyzer/resolver.ts": {
+      "imports": [
+        {
+          "source": "fs",
+          "specifiers": [
+            {
+              "name": "fs",
+              "isDefault": true,
+              "isNamespace": false
+            }
+          ]
+        },
+        {
+          "source": "path",
+          "specifiers": [
+            {
+              "name": "path",
+              "isDefault": true,
+              "isNamespace": false
+            }
+          ]
+        },
+        {
+          "source": "./scanner",
+          "specifiers": [
+            {
+              "name": "RepoMetadata",
+              "isDefault": false,
+              "isNamespace": false
+            }
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ResolvedEdge",
+          "type": "interface"
+        },
+        {
+          "name": "ExternalDependency",
+          "type": "interface"
+        },
+        {
+          "name": "DependencyGraph",
+          "type": "interface"
+        },
+        {
+          "name": "ModuleResolver",
+          "type": "class"
+        }
+      ]
+    },
+    "src/analyzer/scanner.ts": {
+      "imports": [
+        {
+          "source": "fs",
+          "specifiers": [
+            {
+              "name": "fs",
+              "isDefault": true,
+              "isNamespace": false
+            }
+          ]
+        },
+        {
+          "source": "path",
+          "specifiers": [
+            {
+              "name": "path",
+              "isDefault": true,
+              "isNamespace": false
+            }
+          ]
+        },
+        {
+          "source": "fast-glob",
+          "specifiers": [
+            {
+              "name": "fg",
+              "isDefault": true,
+              "isNamespace": false
+            }
+          ]
+        },
+        {
+          "source": "./parser",
+          "specifiers": [
+            {
+              "name": "CodeParser",
+              "isDefault": false,
+              "isNamespace": false
+            },
+            {
+              "name": "FileSymbols",
+              "isDefault": false,
+              "isNamespace": false
+            }
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "RepoMetadata",
+          "type": "interface"
+        },
+        {
+          "name": "RepoScanner",
+          "type": "class"
+        }
+      ]
+    },
+    "src/analyzer/slicer.ts": {
+      "imports": [
+        {
+          "source": "fs",
+          "specifiers": [
+            {
+              "name": "fs",
+              "isDefault": true,
+              "isNamespace": false
+            }
+          ]
+        },
+        {
+          "source": "./resolver",
+          "specifiers": [
+            {
+              "name": "DependencyGraph",
+              "isDefault": false,
+              "isNamespace": false
+            },
+            {
+              "name": "ResolvedEdge",
+              "isDefault": false,
+              "isNamespace": false
+            }
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "FeatureSlice",
+          "type": "interface"
+        },
+        {
+          "name": "GraphSlicer",
+          "type": "class"
+        }
+      ]
+    },
+    "src/semantic/embedder.ts": {
+      "imports": [
+        {
+          "source": "dotenv",
+          "specifiers": [
+            {
+              "name": "dotenv",
+              "isDefault": true,
+              "isNamespace": false
+            }
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "VectorEmbedder",
+          "type": "class"
+        }
+      ]
+    },
+    "src/semantic/index.ts": {
+      "imports": [],
+      "exports": []
+    },
+    "src/semantic/manifest.ts": {
+      "imports": [
+        {
+          "source": "fs",
+          "specifiers": [
+            {
+              "name": "fs",
+              "isDefault": true,
+              "isNamespace": false
+            }
+          ]
+        },
+        {
+          "source": "dotenv",
+          "specifiers": [
+            {
+              "name": "dotenv",
+              "isDefault": true,
+              "isNamespace": false
+            }
+          ]
+        },
+        {
+          "source": "zod",
+          "specifiers": [
+            {
+              "name": "z",
+              "isDefault": false,
+              "isNamespace": false
+            }
+          ]
+        },
+        {
+          "source": "../analyzer",
+          "specifiers": [
+            {
+              "name": "FeatureSlice",
+              "isDefault": false,
+              "isNamespace": false
+            }
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "FeatureManifestSchema",
+          "type": "variable"
+        },
+        {
+          "name": "FeatureManifest",
+          "type": "type"
+        },
+        {
+          "name": "ManifestGenerator",
+          "type": "class"
+        }
+      ]
+    },
+    "src/semantic/store.ts": {
+      "imports": [
+        {
+          "source": "fs",
+          "specifiers": [
+            {
+              "name": "fs",
+              "isDefault": true,
+              "isNamespace": false
+            }
+          ]
+        },
+        {
+          "source": "./manifest",
+          "specifiers": [
+            {
+              "name": "FeatureManifest",
+              "isDefault": false,
+              "isNamespace": false
+            }
+          ]
+        },
+        {
+          "source": "./embedder",
+          "specifiers": [
+            {
+              "name": "VectorEmbedder",
+              "isDefault": false,
+              "isNamespace": false
+            }
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "IndexedFeature",
+          "type": "interface"
+        },
+        {
+          "name": "FeatureCatalog",
+          "type": "class"
+        }
+      ]
+    }
+  }
+}
