@@ -1,0 +1,11 @@
+{
+  "name": "@repo-ai/codebase-dependency-analysis-and-feature-slicing",
+  "version": "1.0.0",
+  "description": "A static analysis suite that parses TypeScript and JavaScript codebases to build internal and external dependency graphs. It provides entry-point-driven dependency slicing using graph traversal to identify all reachable internal files and npm package dependencies required by a specific feature slice.",
+  "main": "src/analyzer/slicer.ts",
+  "dependencies": {
+    "fast-glob": "^3.3.3",
+    "tree-sitter": "^0.21.1",
+    "tree-sitter-typescript": "^0.23.2"
+  }
+}

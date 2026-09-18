@@ -28,7 +28,6 @@ export class RepoScanner {
         '**/build/**',
         '**/.git/**',
         '**/coverage/**',
-        '**/extracted/**',
         '**/*.d.ts',
       ],
       dot: false,

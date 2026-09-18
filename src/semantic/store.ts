@@ -28,6 +28,11 @@ export class FeatureCatalog {
     fs.writeFileSync(FeatureCatalog.DB_PATH, JSON.stringify(this.entries, null, 2));
   }
 
+  public getAll(): FeatureManifest[] {
+    this.load();
+    return this.entries.map((f) => f.manifest);
+  }
+
   public async indexFeature(manifest: FeatureManifest): Promise<void> {
     // Construct rich semantic search text from manifest fields
     const searchText = `
@@ -56,6 +61,7 @@ export class FeatureCatalog {
   }
 
   public async search(query: string, topK = 3): Promise<Array<{ manifest: FeatureManifest; score: number }>> {
+    this.load();
     console.log(`[Store] Searching for: "${query}"...`);
     const queryVector = await this.embedder.embed(query);
 

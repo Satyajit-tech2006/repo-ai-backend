@@ -1,4 +1,5 @@
 import { DependencyGraph } from './resolver';
+import { FeatureSlice } from './slicer';
 
 export interface EntryCandidate {
   filePath: string;
@@ -73,11 +74,9 @@ export class EntryPointDetector {
     return candidates.sort((a, b) => b.weight - a.weight);
   }
 
-  public static deduplicateSlices(
-    rawSlices: Array<{ entryPoint: string; internalFiles: string[]; externalDependencies: string[] }>
-  ) {
+  public static deduplicateSlices(rawSlices: FeatureSlice[]): FeatureSlice[] {
     const sorted = [...rawSlices].sort((a, b) => b.internalFiles.length - a.internalFiles.length);
-    const uniqueFeatures: typeof rawSlices = [];
+    const uniqueFeatures: FeatureSlice[] = [];
 
     for (const current of sorted) {
       const currentFileSet = new Set(current.internalFiles);

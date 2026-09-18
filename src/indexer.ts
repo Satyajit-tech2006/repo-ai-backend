@@ -58,7 +58,10 @@ export class RepositoryIndexer {
   }
 }
 
-// Verification CLI call
-const target = process.argv[2] || '.';
-const indexer = new RepositoryIndexer(target);
-indexer.run().catch(console.error);
+// Only execute if called directly via CLI
+const currentScript = process.argv[1]?.replace(/\\/g, '/');
+if (currentScript && (currentScript.endsWith('src/indexer.ts') || currentScript.endsWith('indexer.ts'))) {
+  const target = process.argv[2] || '.';
+  const indexer = new RepositoryIndexer(target);
+  indexer.run().catch(console.error);
+}

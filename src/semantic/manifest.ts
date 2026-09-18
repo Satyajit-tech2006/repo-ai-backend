@@ -5,7 +5,6 @@ import { FeatureSlice } from '../analyzer';
 
 dotenv.config();
 
-// Runtime validation schema using Zod
 export const FeatureManifestSchema = z.object({
   featureName: z.string(),
   category: z.string(),
@@ -19,112 +18,102 @@ export const FeatureManifestSchema = z.object({
 export type FeatureManifest = z.infer<typeof FeatureManifestSchema>;
 
 export class ManifestGenerator {
-  private apiKey: string;
   private endpoint: string;
 
   constructor() {
     const key = process.env.GEMINI_API_KEY;
-    if (!key) {
-      throw new Error('GEMINI_API_KEY is not defined in your .env file.');
+    if (!key) throw new Error('GEMINI_API_KEY is not defined in .env');
+    this.endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+  }
+
+  private async fetchWithRetry(body: string, retries = 3, delay = 2000): Promise<any> {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      const response = await fetch(this.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+
+      if (response.ok) {
+        return response.json();
+      }
+
+      if ((response.status === 503 || response.status === 429) && attempt < retries) {
+        console.warn(`[Gemini API ${response.status}] High demand/rate limit. Retrying attempt ${attempt + 1} in ${delay}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        delay *= 2;
+        continue;
+      }
+
+      const err = await response.text();
+      throw new Error(`Gemini API error [${response.status}]: ${err}`);
     }
-    this.apiKey = key;
-    // Direct Gemini 2.5 Flash endpoint
-    this.endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${this.apiKey}`;
   }
 
   public async generateManifest(slice: FeatureSlice): Promise<FeatureManifest> {
-    // 1. Bundle only code files belonging to this slice
-    let combinedCode = '';
-    for (const file of slice.internalFiles) {
-      if (fs.existsSync(file)) {
-        const content = fs.readFileSync(file, 'utf-8');
-        combinedCode += `\n--- FILE: ${file} ---\n${content}\n`;
+    const fileSnippets = slice.internalFiles.slice(0, 5).map((filePath) => {
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        return `// File: ${filePath}\n${content.slice(0, 1500)}`;
+      } catch {
+        return `// File: ${filePath} (unavailable)`;
       }
-    }
+    }).join('\n\n');
 
     const prompt = `
-You are an expert software architect analyzing an extracted slice of a codebase.
-Analyze the following code files and external dependencies belonging to a single feature slice.
-
+Analyze this feature slice extracted from a repository:
 Entry Point: ${slice.entryPoint}
+Files Involved: ${slice.internalFiles.join(', ')}
 External Dependencies: ${slice.externalDependencies.join(', ')}
 
-Code:
-${combinedCode}
+Code Samples:
+${fileSnippets}
 
-Produce a concise, structured JSON object with these exact keys:
-- "featureName": string (concise descriptive name)
-- "category": string (e.g., "code_analysis", "developer_tools", "auth")
-- "summary": string (2-3 sentences explaining purpose)
-- "capabilities": array of strings (key capabilities)
+Respond with a JSON object strictly matching this schema:
+- "featureName": string
+- "category": string (e.g. auth, payments, database, code_analysis, developer_tools)
+- "summary": string (1-2 sentences explaining what this feature does)
+- "capabilities": array of strings
+- "entryPoints": array of strings
+- "files": array of strings
+- "externalDependencies": array of strings
 `;
 
-    // 2. Direct HTTP call with JSON output mode
-    const response = await fetch(this.endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-        },
-      }),
+    const body = JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+      },
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Gemini API error [${response.status}]: ${errText}`);
-    }
+    const data = await this.fetchWithRetry(body);
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error('Empty response from Gemini.');
 
-    const data = await response.json();
-    const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!candidateText) {
-      throw new Error('Received empty response from Gemini API.');
-    }
-
-    const parsed = JSON.parse(candidateText);
-
-    // 3. Assemble: deterministic facts from Slicer + semantic synthesis from LLM
-    const fullManifest: FeatureManifest = {
-      featureName: parsed.featureName,
-      category: parsed.category,
-      summary: parsed.summary,
-      capabilities: parsed.capabilities,
-      entryPoints: [slice.entryPoint],
+    const parsed = JSON.parse(text);
+    return FeatureManifestSchema.parse({
+      ...parsed,
+      entryPoints: parsed.entryPoints || [slice.entryPoint],
       files: slice.internalFiles,
       externalDependencies: slice.externalDependencies,
-    };
-
-    // 4. Assert shape with Zod
-    return FeatureManifestSchema.parse(fullManifest);
+    });
   }
 }
 
-// Verification runner
+// Verification Harness
 async function run() {
-  if (!fs.existsSync('feature-slice.json')) {
-    console.error('Run src/analyzer/slicer.ts first to produce feature-slice.json');
-    process.exit(1);
-  }
-
-  const rawSlice = fs.readFileSync('feature-slice.json', 'utf-8');
-  const slice: FeatureSlice = JSON.parse(rawSlice);
-
-  console.log(`[Manifest] Synthesizing semantic manifest for: ${slice.entryPoint}...`);
+  const slice: FeatureSlice = {
+    entryPoint: 'src/analyzer/scanner.ts',
+    internalFiles: ['src/analyzer/scanner.ts', 'src/analyzer/parser.ts'],
+    externalDependencies: ['fs', 'path', 'fast-glob', 'tree-sitter'],
+    fileCount: 2,
+  };
   const generator = new ManifestGenerator();
-
-  const startTime = Date.now();
   const manifest = await generator.generateManifest(slice);
-  const elapsed = Date.now() - startTime;
-
-  console.log(`\n[Manifest] Generated in ${elapsed}ms:`);
   console.log(JSON.stringify(manifest, null, 2));
-
-  fs.writeFileSync('feature-manifest.json', JSON.stringify(manifest, null, 2));
-  console.log('\n[Manifest] Written to feature-manifest.json');
 }
 
 const currentScript = process.argv[1]?.replace(/\\/g, '/');
-if (currentScript && currentScript.endsWith('manifest.ts')) {
+if (currentScript && currentScript.endsWith('src/semantic/manifest.ts')) {
   run().catch(console.error);
 }
