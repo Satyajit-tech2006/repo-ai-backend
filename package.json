@@ -18,6 +18,7 @@
   },
   "homepage": "https://github.com/Satyajit-tech2006/repo-ai-backend#readme",
   "dependencies": {
+    "archiver": "^8.0.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "fast-glob": "^3.3.3",
@@ -28,6 +29,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@types/archiver": "^8.0.0",
     "@types/express": "^5.0.6",
     "@types/node": "^22.20.3",
     "@types/uuid": "^10.0.0",

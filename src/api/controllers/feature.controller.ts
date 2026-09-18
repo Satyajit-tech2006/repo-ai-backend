@@ -5,6 +5,9 @@ import { FeatureCatalog } from '../../semantic';
 import { RepositoryIndexer } from '../../indexer';
 import { CompatibilityChecker, BlueprintGenerator } from '../../compatibility';
 import { FeatureExtractor } from '../../cli/extractor';
+import { FeatureArchiver } from '../../cli/archiver';
+import { WorkspaceManager } from '../../git/workspace';
+import { GitCloner } from '../../git/cloner';
 
 export class FeatureController {
   private static catalog = new FeatureCatalog();
@@ -12,8 +15,7 @@ export class FeatureController {
   // GET /api/features
   public static async getAllFeatures(req: Request, res: Response, next: NextFunction) {
     try {
-      const results = await FeatureController.catalog.search('', 100);
-      const features = results.map((r) => r.manifest);
+      const features = FeatureController.catalog.getAll();
       return ApiResponse.success(res, features, 'Retrieved catalog features');
     } catch (err) {
       next(err);
@@ -38,13 +40,37 @@ export class FeatureController {
   // POST /api/features/index
   public static async triggerIndex(req: Request, res: Response, next: NextFunction) {
     try {
-      const { targetDirectory = '.' } = req.body;
-      const resolvedTarget = path.resolve(targetDirectory);
+      const { targetDirectory, gitUrl, branch, token } = req.body;
 
+      if (!targetDirectory && !gitUrl) {
+        return ApiResponse.error(res, 'Either "targetDirectory" or "gitUrl" must be provided.', 400);
+      }
+
+      // Case 1: Remote Git URL indexing
+      if (gitUrl) {
+        const result = await WorkspaceManager.withWorkspace(async (workspacePath: string) => {
+          await GitCloner.clone({
+            url: gitUrl,
+            targetPath: workspacePath,
+            branch,
+            token,
+          });
+
+          const indexer = new RepositoryIndexer(workspacePath);
+          await indexer.run();
+
+          return { gitUrl, branch: branch || 'default' };
+        });
+
+        return ApiResponse.success(res, result, 'Remote repository cloned and indexed successfully');
+      }
+
+      // Case 2: Local directory indexing
+      const resolvedTarget = path.resolve(targetDirectory);
       const indexer = new RepositoryIndexer(resolvedTarget);
       await indexer.run();
 
-      return ApiResponse.success(res, { targetDirectory: resolvedTarget }, 'Repository indexed successfully');
+      return ApiResponse.success(res, { targetDirectory: resolvedTarget }, 'Local repository indexed successfully');
     } catch (err) {
       next(err);
     }
@@ -111,6 +137,26 @@ export class FeatureController {
         },
         'Feature extracted successfully'
       );
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  // POST /api/features/extract/zip
+  public static async extractZip(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { query, sourceRoot = '.' } = req.body;
+      if (!query) {
+        return ApiResponse.error(res, '"query" is required to match feature for zip download.', 400);
+      }
+
+      const results = await FeatureController.catalog.search(query, 1);
+      if (results.length === 0 || results[0].score < 0.4) {
+        return ApiResponse.error(res, 'No matching feature found in catalog.', 404);
+      }
+
+      const matched = results[0].manifest;
+      await FeatureArchiver.streamZip(matched, sourceRoot, res);
     } catch (err) {
       next(err);
     }
