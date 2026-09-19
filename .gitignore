@@ -51,3 +51,6 @@ out/
 # Operating System files (Optional but recommended)
 .DS_Store
 Thumbs.db
+
+
+.env
