@@ -1,6 +1,13 @@
 import fs from 'fs';
 import path from 'path';
+import { isBuiltin } from 'module';
 import { RepoMetadata } from './scanner';
+import * as PathAliasModule from './path-alias.resolver';
+
+const PathAliasResolver =
+  (PathAliasModule as any).PathAliasResolver ||
+  (PathAliasModule as any).default?.PathAliasResolver ||
+  (PathAliasModule as any).default;
 
 export interface ResolvedEdge {
   from: string;               // Source file relative path, e.g. "src/scanner.ts"
@@ -14,8 +21,8 @@ export interface ExternalDependency {
 }
 
 export interface DependencyGraph {
-  nodes: string[];                     // List of all file paths in the repo
-  internalEdges: ResolvedEdge[];       // Internal file -> file links
+  nodes: string[];                             // List of all file paths in the repo
+  internalEdges: ResolvedEdge[];               // Internal file -> file links
   externalDependencies: ExternalDependency[]; // file -> npm package links
   unresolvedImports: Array<{ from: string; source: string }>;
 }
@@ -34,6 +41,7 @@ export class ModuleResolver {
   public static resolveGraph(metadata: RepoMetadata, rootDirectory?: string): DependencyGraph {
     const rootPath = rootDirectory ? path.resolve(rootDirectory).replace(/\\/g, '/') : metadata.rootPath;
     const knownFiles = new Set(Object.keys(metadata.files));
+    const aliasResolver = new PathAliasResolver(rootPath);
 
     const graph: DependencyGraph = {
       nodes: Array.from(knownFiles),
@@ -49,45 +57,59 @@ export class ModuleResolver {
         const rawSource = imp.source;
         const importedNames = imp.specifiers.map((s) => s.name);
 
-        // 1. Check if external package
-        if (!rawSource.startsWith('.') && !rawSource.startsWith('/')) {
-          const pkgParts = rawSource.split('/');
-          const pkgName = rawSource.startsWith('@')
-            ? `${pkgParts[0]}/${pkgParts[1]}`
-            : pkgParts[0];
-
-          graph.externalDependencies.push({
-            from: filePath,
-            pkgName,
-          });
-          continue;
-        }
-
-        // 2. Resolve relative path
-        const resolvedBase = path.resolve(fileDir, rawSource);
         let resolvedRelative: string | null = null;
 
-        const directRel = path.relative(rootPath, resolvedBase).replace(/\\/g, '/');
-        if (knownFiles.has(directRel)) {
-          resolvedRelative = directRel;
-        } else {
-          for (const ext of this.EXTENSIONS) {
-            const probePath = path.relative(rootPath, resolvedBase + ext).replace(/\\/g, '/');
-            if (knownFiles.has(probePath)) {
-              resolvedRelative = probePath;
-              break;
+        // 1. Check Path Aliases first (@/*, ~/*) via tsconfig/jsconfig
+        const aliasedSystemPath = aliasResolver.resolveAlias(rawSource);
+        if (aliasedSystemPath) {
+          const candidateRel = path.relative(rootPath, aliasedSystemPath).replace(/\\/g, '/');
+          if (knownFiles.has(candidateRel)) {
+            resolvedRelative = candidateRel;
+          }
+        }
+
+        // 2. Relative Imports (./ or ../)
+        if (!resolvedRelative && (rawSource.startsWith('.') || rawSource.startsWith('/'))) {
+          const resolvedBase = path.resolve(fileDir, rawSource);
+          const directRel = path.relative(rootPath, resolvedBase).replace(/\\/g, '/');
+
+          if (knownFiles.has(directRel)) {
+            resolvedRelative = directRel;
+          } else {
+            for (const ext of this.EXTENSIONS) {
+              const probePath = path.relative(rootPath, resolvedBase + ext).replace(/\\/g, '/');
+              if (knownFiles.has(probePath)) {
+                resolvedRelative = probePath;
+                break;
+              }
             }
           }
         }
 
-        // 3. Register Edge
+        // 3. Register Edge or classify as External Dependency
         if (resolvedRelative) {
           graph.internalEdges.push({
             from: filePath,
             to: resolvedRelative,
             importedSymbols: importedNames,
           });
+        } else if (!rawSource.startsWith('.') && !rawSource.startsWith('/')) {
+          // External package (e.g. "express", "fs", "node:path", "@google/genai")
+          const pkgParts = rawSource.split('/');
+          const pkgName = rawSource.startsWith('@') && pkgParts.length > 1
+            ? `${pkgParts[0]}/${pkgParts[1]}`
+            : pkgParts[0];
+
+          // Filter out Node.js native built-ins so they do not pollute package.json
+          const cleanPkgName = pkgName.startsWith('node:') ? pkgName.slice(5) : pkgName;
+          if (!isBuiltin(cleanPkgName)) {
+            graph.externalDependencies.push({
+              from: filePath,
+              pkgName,
+            });
+          }
         } else {
+          // Relative path that failed to resolve
           graph.unresolvedImports.push({
             from: filePath,
             source: rawSource,

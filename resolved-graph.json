@@ -85,14 +85,6 @@
   ],
   "externalDependencies": [
     {
-      "from": "src/indexer.ts",
-      "pkgName": "path"
-    },
-    {
-      "from": "src/analyzer/detector.ts",
-      "pkgName": "path"
-    },
-    {
       "from": "src/analyzer/parser.ts",
       "pkgName": "tree-sitter"
     },
@@ -101,36 +93,12 @@
       "pkgName": "tree-sitter-typescript"
     },
     {
-      "from": "src/analyzer/resolver.ts",
-      "pkgName": "fs"
-    },
-    {
-      "from": "src/analyzer/resolver.ts",
-      "pkgName": "path"
-    },
-    {
-      "from": "src/analyzer/scanner.ts",
-      "pkgName": "fs"
-    },
-    {
-      "from": "src/analyzer/scanner.ts",
-      "pkgName": "path"
-    },
-    {
       "from": "src/analyzer/scanner.ts",
       "pkgName": "fast-glob"
     },
     {
-      "from": "src/analyzer/slicer.ts",
-      "pkgName": "fs"
-    },
-    {
       "from": "src/semantic/embedder.ts",
       "pkgName": "dotenv"
-    },
-    {
-      "from": "src/semantic/manifest.ts",
-      "pkgName": "fs"
     },
     {
       "from": "src/semantic/manifest.ts",
@@ -139,10 +107,6 @@
     {
       "from": "src/semantic/manifest.ts",
       "pkgName": "zod"
-    },
-    {
-      "from": "src/semantic/store.ts",
-      "pkgName": "fs"
     }
   ],
   "unresolvedImports": []

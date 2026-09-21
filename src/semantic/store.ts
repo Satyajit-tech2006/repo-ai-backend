@@ -20,7 +20,11 @@ export class FeatureCatalog {
   private load(): void {
     if (fs.existsSync(FeatureCatalog.DB_PATH)) {
       const data = fs.readFileSync(FeatureCatalog.DB_PATH, 'utf-8');
-      this.entries = JSON.parse(data);
+      try {
+        this.entries = JSON.parse(data);
+      } catch {
+        this.entries = [];
+      }
     }
   }
 
@@ -34,7 +38,6 @@ export class FeatureCatalog {
   }
 
   public async indexFeature(manifest: FeatureManifest): Promise<void> {
-    // Construct rich semantic search text from manifest fields
     const searchText = `
       Name: ${manifest.featureName}
       Category: ${manifest.category}
@@ -45,7 +48,6 @@ export class FeatureCatalog {
     console.log(`[Store] Embedding feature: "${manifest.featureName}"...`);
     const embedding = await this.embedder.embed(searchText);
 
-    // Update if already exists, otherwise push
     const existingIdx = this.entries.findIndex(
       (e) => e.manifest.featureName === manifest.featureName
     );
@@ -62,17 +64,55 @@ export class FeatureCatalog {
 
   public async search(query: string, topK = 3): Promise<Array<{ manifest: FeatureManifest; score: number }>> {
     this.load();
+    if (this.entries.length === 0) return [];
+
     console.log(`[Store] Searching for: "${query}"...`);
-    const queryVector = await this.embedder.embed(query);
 
-    const scored = this.entries.map((entry) => ({
-      manifest: entry.manifest,
-      score: VectorEmbedder.cosineSimilarity(queryVector, entry.embedding),
-    }));
+    // 1. Attempt Vector Similarity Search
+    try {
+      const queryVector = await this.embedder.embed(query);
 
-    // Sort descending by cosine similarity score
-    scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, topK);
+      const scored = this.entries.map((entry) => ({
+        manifest: entry.manifest,
+        score: VectorEmbedder.cosineSimilarity(queryVector, entry.embedding),
+      }));
+
+      scored.sort((a, b) => b.score - a.score);
+      return scored.slice(0, topK);
+    } catch (err: any) {
+      console.warn(
+        `[Store] Remote embedding search failed (${err?.message || 'Network Timeout'}). Falling back to lexical keyword search.`
+      );
+
+      // 2. Resilient Fallback: Lexical Token Search
+      const queryTokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+
+      const scored = this.entries.map((entry) => {
+        const m = entry.manifest;
+        const targetText = [
+          m.featureName,
+          m.summary,
+          m.category,
+          ...m.capabilities,
+          ...m.files,
+        ]
+          .join(' ')
+          .toLowerCase();
+
+        let matchCount = 0;
+        for (const token of queryTokens) {
+          if (targetText.includes(token)) {
+            matchCount++;
+          }
+        }
+
+        const score = queryTokens.length > 0 ? matchCount / queryTokens.length : 0.5;
+        return { manifest: m, score };
+      });
+
+      scored.sort((a, b) => b.score - a.score);
+      return scored.slice(0, topK);
+    }
   }
 }
 
@@ -93,7 +133,7 @@ async function run() {
   await catalog.indexFeature(manifest);
 
   // 2. Perform a test search with an organic query
-  const query = "I need code that scans a project and creates syntax trees";
+  const query = 'I need code that scans a project and creates syntax trees';
   const results = await catalog.search(query, 1);
 
   console.log('\n--- Search Result ---');

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Response } from 'express';
 import { FeatureManifest } from '../semantic';
+import { TreeShaker } from '../analyzer/tree-shaker';
 
 // Require without strict TypeScript module resolution interference
 const archiverModule = require('archiver');
@@ -18,7 +19,7 @@ function createZipArchive(options: any) {
   if (archiverModule.default && archiverModule.default.ZipArchive) {
     return new archiverModule.default.ZipArchive(options);
   }
-  
+
   // Legacy archiver (< v7) - exports a factory function
   if (typeof archiverModule === 'function') {
     return archiverModule('zip', options);
@@ -65,19 +66,45 @@ export class FeatureArchiver {
       archive.pipe(res);
 
       const resolvedRoot = path.resolve(sourceRoot);
+      const treeShaker = new TreeShaker();
 
-      // 1. Append internal source files
+      // Collect required symbols across manifest capabilities
+      const requiredSymbols = new Set<string>(manifest.capabilities || []);
+
+      // 1. Append internal source files (with symbol-level tree-shaking)
       for (const relativePath of manifest.files) {
         const fullSourcePath = path.isAbsolute(relativePath)
           ? relativePath
           : path.join(resolvedRoot, relativePath);
 
         if (fs.existsSync(fullSourcePath)) {
-          const zipInternalPath = path.isAbsolute(relativePath)
-            ? path.relative(resolvedRoot, fullSourcePath)
-            : relativePath;
+          const zipInternalPath = (
+            path.isAbsolute(relativePath)
+              ? path.relative(resolvedRoot, fullSourcePath)
+              : relativePath
+          ).replace(/\\/g, '/');
 
-          archive.file(fullSourcePath, { name: zipInternalPath.replace(/\\/g, '/') });
+          const isTypeScript =
+            relativePath.endsWith('.ts') ||
+            relativePath.endsWith('.tsx') ||
+            relativePath.endsWith('.js') ||
+            relativePath.endsWith('.jsx');
+
+          const isEntryPoint = manifest.entryPoints.includes(relativePath);
+
+          // Keep entry point code intact; tree-shake intermediate dependencies
+          if (isTypeScript && !isEntryPoint && requiredSymbols.size > 0) {
+            try {
+              const rawSource = fs.readFileSync(fullSourcePath, 'utf-8');
+              const prunedCode = treeShaker.shakeFile(rawSource, requiredSymbols);
+              archive.append(prunedCode, { name: zipInternalPath });
+              continue;
+            } catch {
+              // Fall back to raw file if AST shaking encounters an error
+            }
+          }
+
+          archive.file(fullSourcePath, { name: zipInternalPath });
         }
       }
 

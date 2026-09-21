@@ -8,6 +8,7 @@ import { FeatureExtractor } from '../../cli/extractor';
 import { FeatureArchiver } from '../../cli/archiver';
 import { WorkspaceManager } from '../../git/workspace';
 import { GitCloner } from '../../git/cloner';
+import { JobManager } from '../../queue/job.manager';
 
 export class FeatureController {
   private static catalog = new FeatureCatalog();
@@ -46,31 +47,63 @@ export class FeatureController {
         return ApiResponse.error(res, 'Either "targetDirectory" or "gitUrl" must be provided.', 400);
       }
 
-      // Case 1: Remote Git URL indexing
-      if (gitUrl) {
-        const result = await WorkspaceManager.withWorkspace(async (workspacePath: string) => {
-          await GitCloner.clone({
-            url: gitUrl,
-            targetPath: workspacePath,
-            branch,
-            token,
-          });
+      const jobManager = JobManager.getInstance();
 
-          const indexer = new RepositoryIndexer(workspacePath);
-          await indexer.run();
+      const job = jobManager.createJob(
+        'REPOSITORY_INDEXING',
+        { targetDirectory, gitUrl, branch },
+        async (jobRecord, updateProgress) => {
+          updateProgress(10);
 
-          return { gitUrl, branch: branch || 'default' };
-        });
+          if (gitUrl) {
+            return await WorkspaceManager.withWorkspace(async (workspacePath: string) => {
+              updateProgress(20);
 
-        return ApiResponse.success(res, result, 'Remote repository cloned and indexed successfully');
-      }
+              await GitCloner.clone({
+                url: gitUrl,
+                targetPath: workspacePath,
+                branch,
+                token,
+              });
 
-      // Case 2: Local directory indexing
-      const resolvedTarget = path.resolve(targetDirectory);
-      const indexer = new RepositoryIndexer(resolvedTarget);
-      await indexer.run();
+              updateProgress(45);
 
-      return ApiResponse.success(res, { targetDirectory: resolvedTarget }, 'Local repository indexed successfully');
+              const indexer = new RepositoryIndexer(workspacePath);
+              await indexer.run();
+
+              updateProgress(90);
+
+              return {
+                gitUrl,
+                branch: branch || 'default',
+                status: 'indexed',
+              };
+            });
+          } else {
+            updateProgress(30);
+            const resolvedTarget = path.resolve(targetDirectory);
+            const indexer = new RepositoryIndexer(resolvedTarget);
+            await indexer.run();
+
+            updateProgress(90);
+            return {
+              targetDirectory: resolvedTarget,
+              status: 'indexed',
+            };
+          }
+        }
+      );
+
+      // Respond immediately with 202 Accepted and job tracking metadata
+      return res.status(202).json({
+        success: true,
+        message: 'Repository indexing job accepted and running in the background.',
+        data: {
+          jobId: job.id,
+          status: job.status,
+          checkStatusUrl: `/api/jobs/${job.id}`,
+        },
+      });
     } catch (err) {
       next(err);
     }

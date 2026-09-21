@@ -1,5 +1,6 @@
 import express from 'express';
 import featureRoutes from './routes/feature.route';
+import jobRoutes from './routes/job.route';
 import { errorHandler } from './middlewares/error.middleware';
 
 const app = express();
@@ -8,6 +9,7 @@ app.use(express.json());
 
 // API Base Routes
 app.use('/api/features', featureRoutes);
+app.use('/api/jobs', jobRoutes);
 
 // Global Error Handler
 app.use(errorHandler);

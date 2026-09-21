@@ -9,4 +9,6 @@ app.listen(PORT, () => {
   console.log(`- POST /api/features/index`);
   console.log(`- POST /api/features/compatibility`);
   console.log(`- POST /api/features/extract`);
+  console.log('- GET  /api/jobs');
+  console.log('- GET  /api/jobs/:id');
 });
