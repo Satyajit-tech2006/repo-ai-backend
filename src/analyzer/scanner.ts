@@ -11,14 +11,17 @@ export interface RepoMetadata {
 
 export class RepoScanner {
   private parser: CodeParser;
+  private defaultDirectory?: string;
 
-  constructor() {
+  constructor(defaultDirectory?: string) {
     this.parser = new CodeParser();
+    this.defaultDirectory = defaultDirectory;
   }
 
-  public async scan(targetDirectory: string): Promise<RepoMetadata> {
+  public async scan(targetDirectory?: string): Promise<RepoMetadata> {
+    const rawTarget = targetDirectory || this.defaultDirectory || process.cwd();
     // Normalize Windows backslashes to forward slashes for fast-glob compatibility
-    const absoluteRoot = path.resolve(targetDirectory).replace(/\\/g, '/');
+    const absoluteRoot = path.resolve(rawTarget).replace(/\\/g, '/');
 
     const rawEntries = await fg(['**/*.{ts,js,tsx,jsx}'], {
       cwd: absoluteRoot,
@@ -43,7 +46,7 @@ export class RepoScanner {
     };
 
     for (const relativePath of entries) {
-      const fullPath = path.posix.join(absoluteRoot, relativePath);
+      const fullPath = path.resolve(absoluteRoot, relativePath);
       try {
         const sourceCode = fs.readFileSync(fullPath, 'utf-8');
         metadata.files[relativePath] = this.parser.parseSource(sourceCode);
@@ -59,10 +62,10 @@ export class RepoScanner {
 // CLI Execution Harness (guarded so it only runs when directly invoked)
 async function main() {
   const targetDir = process.argv[2] || '.';
-  
-  const scanner = new RepoScanner();
+
+  const scanner = new RepoScanner(targetDir);
   const startTime = Date.now();
-  const result = await scanner.scan(targetDir);
+  const result = await scanner.scan();
   const elapsed = Date.now() - startTime;
 
   console.log(`\n[Scanner] Parsed ${result.totalFiles} files in ${elapsed}ms.`);

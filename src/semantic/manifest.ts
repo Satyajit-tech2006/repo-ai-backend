@@ -1,119 +1,130 @@
-import fs from 'fs';
 import dotenv from 'dotenv';
-import { z } from 'zod';
-import { FeatureSlice } from '../analyzer';
+import { FeatureSlice } from '../analyzer/slicer';
+import { RepoMetadata } from '../analyzer/scanner';
 
 dotenv.config();
 
-export const FeatureManifestSchema = z.object({
-  featureName: z.string(),
-  category: z.string(),
-  summary: z.string(),
-  capabilities: z.array(z.string()),
-  entryPoints: z.array(z.string()),
-  files: z.array(z.string()),
-  externalDependencies: z.array(z.string()),
-});
-
-export type FeatureManifest = z.infer<typeof FeatureManifestSchema>;
+export interface FeatureManifest {
+  featureName: string;
+  summary: string;
+  category: string;
+  entryPoints: string[];
+  files: string[];
+  capabilities: string[];
+}
 
 export class ManifestGenerator {
+  private apiKey: string;
   private endpoint: string;
 
   constructor() {
     const key = process.env.GEMINI_API_KEY;
-    if (!key) throw new Error('GEMINI_API_KEY is not defined in .env');
-    this.endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
-  }
-
-  private async fetchWithRetry(body: string, retries = 3, delay = 2000): Promise<any> {
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      const response = await fetch(this.endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-      });
-
-      if (response.ok) {
-        return response.json();
-      }
-
-      if ((response.status === 503 || response.status === 429) && attempt < retries) {
-        console.warn(`[Gemini API ${response.status}] High demand/rate limit. Retrying attempt ${attempt + 1} in ${delay}ms...`);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        delay *= 2;
-        continue;
-      }
-
-      const err = await response.text();
-      throw new Error(`Gemini API error [${response.status}]: ${err}`);
+    if (!key) {
+      throw new Error('GEMINI_API_KEY is missing from environment variables.');
     }
+    this.apiKey = key;
+    // Updated to the current active Gemini Flash model
+    this.endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${this.apiKey}`;
   }
 
-  public async generateManifest(slice: FeatureSlice): Promise<FeatureManifest> {
-    const fileSnippets = slice.internalFiles.slice(0, 5).map((filePath) => {
-      try {
-        const content = fs.readFileSync(filePath, 'utf-8');
-        return `// File: ${filePath}\n${content.slice(0, 1500)}`;
-      } catch {
-        return `// File: ${filePath} (unavailable)`;
+  public async generateManifest(
+    slice: FeatureSlice,
+    metadata: RepoMetadata,
+    retries = 2
+  ): Promise<FeatureManifest> {
+    const internalFiles = slice.internalFiles || [];
+    const entryPoint = slice.entryPoint;
+
+    // Collect all exported symbols for the files in this slice
+    const exportedSymbols: string[] = [];
+    for (const file of internalFiles) {
+      const fileMeta = metadata.files?.[file];
+      if (fileMeta?.exports) {
+        fileMeta.exports.forEach((e) => exportedSymbols.push(`${e.name} (${e.type})`));
       }
-    }).join('\n\n');
+    }
 
     const prompt = `
-Analyze this feature slice extracted from a repository:
-Entry Point: ${slice.entryPoint}
-Files Involved: ${slice.internalFiles.join(', ')}
-External Dependencies: ${slice.externalDependencies.join(', ')}
+You are an expert software cataloger. Analyze the following sliced code feature:
+- Entry point: ${entryPoint}
+- Internal files: ${internalFiles.join(', ')}
+- Exported symbols: ${exportedSymbols.slice(0, 30).join(', ')}
+- External dependencies: ${(slice.externalDependencies || []).join(', ')}
 
-Code Samples:
-${fileSnippets}
-
-Respond with a JSON object strictly matching this schema:
-- "featureName": string
-- "category": string (e.g. auth, payments, database, code_analysis, developer_tools)
-- "summary": string (1-2 sentences explaining what this feature does)
-- "capabilities": array of strings
-- "entryPoints": array of strings
-- "files": array of strings
-- "externalDependencies": array of strings
+Respond ONLY with valid raw JSON in this exact structure without markdown fences:
+{
+  "featureName": "Descriptive feature name",
+  "summary": "1-2 sentence description of what this slice does",
+  "category": "utility | authentication | database | api | testing | core",
+  "entryPoints": ["${entryPoint}"],
+  "files": ${JSON.stringify(internalFiles)},
+  "capabilities": ["capability 1", "capability 2"]
+}
 `;
 
-    const body = JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: 'application/json',
-      },
-    });
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const response = await fetch(this.endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
 
-    const data = await this.fetchWithRetry(body);
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('Empty response from Gemini.');
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Gemini API error [${response.status}]: ${errText}`);
+        }
 
-    const parsed = JSON.parse(text);
-    return FeatureManifestSchema.parse({
-      ...parsed,
-      entryPoints: parsed.entryPoints || [slice.entryPoint],
-      files: slice.internalFiles,
-      externalDependencies: slice.externalDependencies,
-    });
+        const data = await response.json();
+        const rawContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!rawContent) throw new Error('Empty response from Gemini');
+
+        const cleanedJson = rawContent.replace(/```json\n?|```/g, '').trim();
+        const parsed = JSON.parse(cleanedJson);
+        return {
+          ...parsed,
+          files: internalFiles,
+          entryPoints: parsed.entryPoints || [entryPoint],
+        };
+      } catch (err: any) {
+        if (attempt === retries) {
+          console.warn(`[Manifest] Remote generation failed (${err?.message || err}). Using AST fallback.`);
+          return this.generateFallbackManifest(slice, metadata);
+        }
+        await new Promise((res) => setTimeout(res, 1000 * attempt));
+      }
+    }
+
+    return this.generateFallbackManifest(slice, metadata);
   }
-}
 
-// Verification Harness
-async function run() {
-  const slice: FeatureSlice = {
-    entryPoint: 'src/analyzer/scanner.ts',
-    internalFiles: ['src/analyzer/scanner.ts', 'src/analyzer/parser.ts'],
-    externalDependencies: ['fs', 'path', 'fast-glob', 'tree-sitter'],
-    fileCount: 2,
-  };
-  const generator = new ManifestGenerator();
-  const manifest = await generator.generateManifest(slice);
-  console.log(JSON.stringify(manifest, null, 2));
-}
+  private generateFallbackManifest(slice: FeatureSlice, metadata: RepoMetadata): FeatureManifest {
+    const internalFiles = slice.internalFiles || [];
+    const entryPoint = slice.entryPoint;
+    const baseName = entryPoint.split('/').pop()?.replace(/\.[^/.]+$/, '') || 'feature';
+    const readableName = baseName
+      .split(/[-_]/)
+      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+      .join(' ');
 
-const currentScript = process.argv[1]?.replace(/\\/g, '/');
-if (currentScript && currentScript.endsWith('src/semantic/manifest.ts')) {
-  run().catch(console.error);
+    const capabilities: string[] = [];
+    for (const file of internalFiles) {
+      const fileMeta = metadata.files?.[file];
+      if (fileMeta?.exports) {
+        fileMeta.exports.forEach((e) => capabilities.push(`Exports ${e.name} (${e.type})`));
+      }
+    }
+
+    return {
+      featureName: `${readableName} Module`,
+      summary: `Automated feature slice isolated from ${entryPoint} with ${internalFiles.length} file(s).`,
+      category: entryPoint.includes('test') ? 'testing' : 'core',
+      entryPoints: [entryPoint],
+      files: internalFiles,
+      capabilities: capabilities.length > 0 ? capabilities.slice(0, 5) : ['Modular code execution'],
+    };
+  }
 }

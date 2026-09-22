@@ -13,10 +13,22 @@ import { JobManager } from '../../queue/job.manager';
 export class FeatureController {
   private static catalog = new FeatureCatalog();
 
+  // GET /api/features/repositories
+  public static listRepositories(req: Request, res: Response, next: NextFunction) {
+    try {
+      const repos = FeatureController.catalog.getRepositories();
+      return ApiResponse.success(res, repos, 'Indexed repositories retrieved');
+    } catch (err) {
+      next(err);
+    }
+  }
+
   // GET /api/features
   public static async getAllFeatures(req: Request, res: Response, next: NextFunction) {
     try {
-      const features = FeatureController.catalog.getAll();
+      // Searches across all repositories without limit filter
+      const results = await FeatureController.catalog.search('', { topK: 100 });
+      const features = results.map((r) => r.manifest);
       return ApiResponse.success(res, features, 'Retrieved catalog features');
     } catch (err) {
       next(err);
@@ -26,12 +38,16 @@ export class FeatureController {
   // POST /api/features/search
   public static async searchFeatures(req: Request, res: Response, next: NextFunction) {
     try {
-      const { query, limit = 5 } = req.body;
+      const { query, limit = 5, repositoryId } = req.body;
       if (!query || typeof query !== 'string') {
         return ApiResponse.error(res, 'A string "query" is required in the request body.', 400);
       }
 
-      const results = await FeatureController.catalog.search(query, Number(limit));
+      const results = await FeatureController.catalog.search(query, {
+        topK: Number(limit),
+        repositoryId: repositoryId ? String(repositoryId) : undefined,
+      });
+
       return ApiResponse.success(res, results, 'Search results retrieved');
     } catch (err) {
       next(err);
@@ -112,12 +128,16 @@ export class FeatureController {
   // POST /api/features/compatibility
   public static async evaluateCompatibility(req: Request, res: Response, next: NextFunction) {
     try {
-      const { query, targetRepoPath = '.' } = req.body;
+      const { query, targetRepoPath = '.', repositoryId } = req.body;
       if (!query) {
         return ApiResponse.error(res, '"query" is required to match a feature.', 400);
       }
 
-      const results = await FeatureController.catalog.search(query, 1);
+      const results = await FeatureController.catalog.search(query, {
+        topK: 1,
+        repositoryId: repositoryId ? String(repositoryId) : undefined,
+      });
+
       if (results.length === 0 || results[0].score < 0.4) {
         return ApiResponse.error(res, 'No relevant feature found matching query.', 404);
       }
@@ -127,12 +147,13 @@ export class FeatureController {
       const report = CompatibilityChecker.check(matched, profile);
 
       const blueprintGen = new BlueprintGenerator();
-      const blueprint = await blueprintGen.generateBlueprint(matched, profile, report);
+      const blueprint = await blueprintGen.generateBlueprint(matched, report);
 
       return ApiResponse.success(
         res,
         {
           matchedFeature: matched.featureName,
+          repositoryId: results[0].repositoryId,
           score: results[0].score,
           profile,
           report,
@@ -148,12 +169,22 @@ export class FeatureController {
   // POST /api/features/extract
   public static async extractFeature(req: Request, res: Response, next: NextFunction) {
     try {
-      const { query, destinationPath = './extracted-feature', sourceRoot = '.' } = req.body;
+      const {
+        query,
+        destinationPath = './extracted-feature',
+        sourceRoot = '.',
+        repositoryId,
+      } = req.body;
+
       if (!query) {
         return ApiResponse.error(res, '"query" is required to locate feature for extraction.', 400);
       }
 
-      const results = await FeatureController.catalog.search(query, 1);
+      const results = await FeatureController.catalog.search(query, {
+        topK: 1,
+        repositoryId: repositoryId ? String(repositoryId) : undefined,
+      });
+
       if (results.length === 0 || results[0].score < 0.4) {
         return ApiResponse.error(res, 'No matching feature found in catalog.', 404);
       }
@@ -165,6 +196,7 @@ export class FeatureController {
         res,
         {
           extractedFeature: matched.featureName,
+          repositoryId: results[0].repositoryId,
           destinationPath: path.resolve(destinationPath),
           files: matched.files,
         },
@@ -178,12 +210,16 @@ export class FeatureController {
   // POST /api/features/extract/zip
   public static async extractZip(req: Request, res: Response, next: NextFunction) {
     try {
-      const { query, sourceRoot = '.' } = req.body;
+      const { query, sourceRoot = '.', repositoryId } = req.body;
       if (!query) {
         return ApiResponse.error(res, '"query" is required to match feature for zip download.', 400);
       }
 
-      const results = await FeatureController.catalog.search(query, 1);
+      const results = await FeatureController.catalog.search(query, {
+        topK: 1,
+        repositoryId: repositoryId ? String(repositoryId) : undefined,
+      });
+
       if (results.length === 0 || results[0].score < 0.4) {
         return ApiResponse.error(res, 'No matching feature found in catalog.', 404);
       }

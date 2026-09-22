@@ -39,9 +39,19 @@ export class ModuleResolver {
   ];
 
   public static resolveGraph(metadata: RepoMetadata, rootDirectory?: string): DependencyGraph {
-    const rootPath = rootDirectory ? path.resolve(rootDirectory).replace(/\\/g, '/') : metadata.rootPath;
-    const knownFiles = new Set(Object.keys(metadata.files));
-    const aliasResolver = new PathAliasResolver(rootPath);
+    // Guard against undefined rootPath
+    const resolvedRoot = rootDirectory || metadata?.rootPath || process.cwd();
+    const rootPath = path.resolve(resolvedRoot).replace(/\\/g, '/');
+
+    const filesDict = metadata?.files || {};
+    const knownFiles = new Set(Object.keys(filesDict));
+
+    let aliasResolver: any = null;
+    try {
+      aliasResolver = new PathAliasResolver(rootPath);
+    } catch {
+      aliasResolver = null;
+    }
 
     const graph: DependencyGraph = {
       nodes: Array.from(knownFiles),
@@ -50,21 +60,31 @@ export class ModuleResolver {
       unresolvedImports: [],
     };
 
-    for (const [filePath, symbols] of Object.entries(metadata.files)) {
-      const fileDir = path.dirname(path.join(rootPath, filePath));
+    for (const [filePath, symbols] of Object.entries(filesDict)) {
+      if (!filePath || !symbols) continue;
 
-      for (const imp of symbols.imports) {
+      const fullSourceFile = path.resolve(rootPath, filePath);
+      const fileDir = path.dirname(fullSourceFile);
+
+      for (const imp of symbols.imports || []) {
         const rawSource = imp.source;
-        const importedNames = imp.specifiers.map((s) => s.name);
+        if (!rawSource) continue;
 
+        const importedNames = (imp.specifiers || []).map((s: any) => s.name);
         let resolvedRelative: string | null = null;
 
         // 1. Check Path Aliases first (@/*, ~/*) via tsconfig/jsconfig
-        const aliasedSystemPath = aliasResolver.resolveAlias(rawSource);
-        if (aliasedSystemPath) {
-          const candidateRel = path.relative(rootPath, aliasedSystemPath).replace(/\\/g, '/');
-          if (knownFiles.has(candidateRel)) {
-            resolvedRelative = candidateRel;
+        if (aliasResolver && typeof aliasResolver.resolveAlias === 'function') {
+          try {
+            const aliasedSystemPath = aliasResolver.resolveAlias(rawSource);
+            if (aliasedSystemPath) {
+              const candidateRel = path.relative(rootPath, aliasedSystemPath).replace(/\\/g, '/');
+              if (knownFiles.has(candidateRel)) {
+                resolvedRelative = candidateRel;
+              }
+            }
+          } catch {
+            // Ignore alias resolution failure
           }
         }
 
@@ -94,13 +114,12 @@ export class ModuleResolver {
             importedSymbols: importedNames,
           });
         } else if (!rawSource.startsWith('.') && !rawSource.startsWith('/')) {
-          // External package (e.g. "express", "fs", "node:path", "@google/genai")
           const pkgParts = rawSource.split('/');
-          const pkgName = rawSource.startsWith('@') && pkgParts.length > 1
-            ? `${pkgParts[0]}/${pkgParts[1]}`
-            : pkgParts[0];
+          const pkgName =
+            rawSource.startsWith('@') && pkgParts.length > 1
+              ? `${pkgParts[0]}/${pkgParts[1]}`
+              : pkgParts[0];
 
-          // Filter out Node.js native built-ins so they do not pollute package.json
           const cleanPkgName = pkgName.startsWith('node:') ? pkgName.slice(5) : pkgName;
           if (!isBuiltin(cleanPkgName)) {
             graph.externalDependencies.push({
@@ -109,7 +128,6 @@ export class ModuleResolver {
             });
           }
         } else {
-          // Relative path that failed to resolve
           graph.unresolvedImports.push({
             from: filePath,
             source: rawSource,
@@ -120,28 +138,4 @@ export class ModuleResolver {
 
     return graph;
   }
-}
-
-// Verification Harness (guarded so it does not auto-run when imported)
-async function run() {
-  if (!fs.existsSync('repo-graph.json')) {
-    console.error('Run src/scanner.ts first to generate repo-graph.json');
-    process.exit(1);
-  }
-
-  const raw = fs.readFileSync('repo-graph.json', 'utf-8');
-  const metadata: RepoMetadata = JSON.parse(raw);
-
-  const graph = ModuleResolver.resolveGraph(metadata);
-
-  console.log('\n--- Resolved Dependency Graph ---');
-  console.log(JSON.stringify(graph, null, 2));
-
-  fs.writeFileSync('resolved-graph.json', JSON.stringify(graph, null, 2));
-  console.log('\n[Resolver] Emitted graph to resolved-graph.json');
-}
-
-const currentScript = process.argv[1]?.replace(/\\/g, '/');
-if (currentScript && currentScript.endsWith('resolver.ts')) {
-  run().catch(console.error);
 }
